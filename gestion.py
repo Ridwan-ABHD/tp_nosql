@@ -87,7 +87,7 @@ def render_post_creation(users_col, posts_col):
         st.info("Cree d'abord au moins un utilisateur.")
         return
 
-    user_options = {f"{u.get('username', 'sans nom')} ({u.get('email', '-')})": str(u["_id"]) for u in users}
+    user_options = {f"{u.get('username', 'sans nom')} ({u.get('email', '-')})": str(u['_id']) for u in users}
 
     with st.form("create_post_form", clear_on_submit=True):
         selected_label = st.selectbox("Auteur", options=list(user_options.keys()))
@@ -109,7 +109,7 @@ def render_post_creation(users_col, posts_col):
 def render_feed(users_col, posts_col):
     st.subheader("Fil d'actualites")
     posts = load_posts(posts_col)
-    users = {str(u["_id"]): u for u in load_users(users_col)}
+    users = {str(u['_id']): u for u in load_users(users_col)}
 
     if not posts:
         st.info("Aucun post pour le moment.")
