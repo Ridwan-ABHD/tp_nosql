@@ -285,7 +285,7 @@ def toggle_comment_reaction(comments_col, comment_id, user_key, reaction):
 ## ─────────────────────────────────────────────────────────────
 
 def agg_posts_par_utilisateur(users_col, posts_col):
-    """Nombre total de publications par utilisateur ($group + $lookup)."""
+    """Top 5 des contributeurs les plus actifs ($group + $lookup + $sort + $limit)."""
     # Pipeline : on groupe les posts par creator_id, puis on fait un $lookup
     # pour récupérer le pseudo de l'utilisateur depuis la collection users.
     # Note: creator_id peut etre un ObjectId ou une string selon l'import
@@ -313,6 +313,7 @@ def agg_posts_par_utilisateur(users_col, posts_col):
             "total_posts": 1,
         }},
         {"$sort": {"total_posts": -1}},
+        {"$limit": 5},
     ]
     return list(posts_col.aggregate(pipeline))
 

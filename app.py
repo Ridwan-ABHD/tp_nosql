@@ -49,62 +49,51 @@ def render_accueil(users_col, posts_col, comments_col):
     st.divider()
 
     # ─────────────────────────────────────────────────────────────
-    # Deux colonnes : Publications par utilisateur | Top 3 commentees
+    # Deux colonnes : Top 5 contributeurs | Top 10 engagement
     # ─────────────────────────────────────────────────────────────
     col_left, col_right = st.columns(2)
 
     with col_left:
-        st.subheader("Publications par utilisateur")
+        st.subheader("Top 5 des contributeurs")
         posts_par_user = agg_posts_par_utilisateur(users_col, posts_col)
         if posts_par_user:
-            for entry in posts_par_user:
+            for i, entry in enumerate(posts_par_user, start=1):
                 pseudo = entry.get("pseudo", "Inconnu")
                 total = entry.get("total_posts", 0)
-                st.metric(pseudo, f"{total} publication{'s' if total > 1 else ''}")
+                st.write(f"{i}. {pseudo} - {total} publication{'s' if total > 1 else ''}")
         else:
             st.info("Aucune publication pour le moment.")
 
     with col_right:
-        st.subheader("Top 3 des publications les plus commentees")
+        st.subheader("Top 10 de l'engagement")
         all_posts = get_comments_per_post(posts_col)
-        top3 = all_posts[:3]
+        top10 = all_posts[:10]
         
-        if top3:
-            table_data = []
-            for i, entry in enumerate(top3, start=1):
-                contenu = entry.get("contenu", "")
-                apercu = (contenu[:40] + "...") if len(contenu) > 40 else (contenu or "-")
-                table_data.append({
-                    "Rang": f"#{i}",
-                    "Auteur": entry.get("pseudo_auteur", "Inconnu"),
-                    "Contenu": apercu,
-                    "Commentaires": entry.get("nb_commentaires", 0),
-                    "Likes": entry.get("likes", 0),
-                })
-            st.table(table_data)
+        if top10:
+            for i, entry in enumerate(top10, start=1):
+                auteur = entry.get("pseudo_auteur", "Inconnu")
+                nb_com = entry.get("nb_commentaires", 0)
+                likes = entry.get("likes", 0)
+                st.write(f"{i}. {auteur} - {nb_com} commentaire{'s' if nb_com > 1 else ''}, {likes} like{'s' if likes > 1 else ''}")
         else:
             st.info("Aucune publication pour le moment.")
 
     st.divider()
 
     # ─────────────────────────────────────────────────────────────
-    # Engagement des utilisateurs
+    # Top 3 des publications les plus commentees
     # ─────────────────────────────────────────────────────────────
-    st.subheader("Engagement des utilisateurs")
+    st.subheader("Top 3 des publications les plus commentees")
+    top3 = get_comments_per_post(posts_col)[:3]
     
-    all_posts_comments = get_comments_per_post(posts_col)
-    if all_posts_comments:
-        full_table = []
-        for entry in all_posts_comments:
+    if top3:
+        for i, entry in enumerate(top3, start=1):
+            auteur = entry.get("pseudo_auteur", "Inconnu")
             contenu = entry.get("contenu", "")
-            apercu = (contenu[:60] + "...") if len(contenu) > 60 else (contenu or "-")
-            full_table.append({
-                "Auteur": entry.get("pseudo_auteur", "Inconnu"),
-                "Contenu": apercu,
-                "Nb commentaires": entry.get("nb_commentaires", 0),
-                "Likes": entry.get("likes", 0),
-            })
-        st.table(full_table)
+            apercu = (contenu[:50] + "...") if len(contenu) > 50 else (contenu or "-")
+            nb_com = entry.get("nb_commentaires", 0)
+            likes = entry.get("likes", 0)
+            st.write(f"{i}. **{auteur}** : \"{apercu}\" - {nb_com} commentaire{'s' if nb_com > 1 else ''}, {likes} like{'s' if likes > 1 else ''}")
     else:
         st.info("Aucune publication pour le moment.")
 
