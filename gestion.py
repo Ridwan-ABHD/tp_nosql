@@ -288,11 +288,22 @@ def agg_posts_par_utilisateur(users_col, posts_col):
     """Nombre total de publications par utilisateur ($group + $lookup)."""
     # Pipeline : on groupe les posts par creator_id, puis on fait un $lookup
     # pour récupérer le pseudo de l'utilisateur depuis la collection users.
+    # Note: creator_id peut etre un ObjectId ou une string selon l'import
     pipeline = [
         {"$group": {"_id": "$creator_id", "total_posts": {"$sum": 1}}},
+        # Convertit _id en ObjectId si c'est une string pour le lookup
+        {"$addFields": {
+            "creator_oid": {
+                "$cond": {
+                    "if": {"$eq": [{"$type": "$_id"}, "string"]},
+                    "then": {"$toObjectId": "$_id"},
+                    "else": "$_id"
+                }
+            }
+        }},
         {"$lookup": {
             "from": "users",
-            "localField": "_id",
+            "localField": "creator_oid",
             "foreignField": "_id",
             "as": "user_info",
         }},
@@ -327,20 +338,41 @@ def agg_top3_posts_par_commentaires(posts_col, comments_col):
     """Top 3 des publications ayant le plus de commentaires ($group + $sort + $limit + $lookup)."""
     # Pipeline : on groupe les commentaires par post_id, on compte, on trie
     # et on récupère le contenu du post via $lookup.
+    # Note: post_id peut etre string ou ObjectId selon l'import
     pipeline = [
         {"$group": {"_id": "$post_id", "nb_commentaires": {"$sum": 1}}},
         {"$sort": {"nb_commentaires": -1}},
         {"$limit": 3},
+        # Convertit post_id en ObjectId si c'est une string
+        {"$addFields": {
+            "post_oid": {
+                "$cond": {
+                    "if": {"$eq": [{"$type": "$_id"}, "string"]},
+                    "then": {"$toObjectId": "$_id"},
+                    "else": "$_id"
+                }
+            }
+        }},
         {"$lookup": {
             "from": "posts",
-            "localField": "_id",
+            "localField": "post_oid",
             "foreignField": "_id",
             "as": "post_info",
         }},
         {"$unwind": {"path": "$post_info", "preserveNullAndEmptyArrays": True}},
+        # Convertit creator_id en ObjectId si c'est une string
+        {"$addFields": {
+            "creator_oid": {
+                "$cond": {
+                    "if": {"$eq": [{"$type": "$post_info.creator_id"}, "string"]},
+                    "then": {"$toObjectId": "$post_info.creator_id"},
+                    "else": "$post_info.creator_id"
+                }
+            }
+        }},
         {"$lookup": {
             "from": "users",
-            "localField": "post_info.creator_id",
+            "localField": "creator_oid",
             "foreignField": "_id",
             "as": "creator_info",
         }},
@@ -363,21 +395,45 @@ def get_comments_per_post(posts_col):
     Utilise $addFields et $size pour calculer le nombre de commentaires.
     """
     pipeline = [
+        # Convertit _id en string pour matcher avec comments.post_id (qui est string)
+        {"$addFields": {
+            "post_id_str": {"$toString": "$_id"}
+        }},
         # $lookup : jointure posts._id <-> comments.post_id
         {"$lookup": {
             "from": "comments",
-            "localField": "_id",
-            "foreignField": "post_id",
+            "let": {"pid": "$_id", "pid_str": "$post_id_str"},
+            "pipeline": [
+                {"$match": {
+                    "$expr": {
+                        "$or": [
+                            {"$eq": ["$post_id", "$$pid"]},
+                            {"$eq": ["$post_id", "$$pid_str"]},
+                            {"$eq": [{"$toObjectId": {"$ifNull": ["$post_id", ""]}}, "$$pid"]}
+                        ]
+                    }
+                }}
+            ],
             "as": "comments_list",
         }},
         # $addFields : calcule la taille du tableau avec $size
         {"$addFields": {
             "nb_commentaires": {"$size": "$comments_list"},
         }},
+        # Convertit creator_id en ObjectId si c'est une string
+        {"$addFields": {
+            "creator_oid": {
+                "$cond": {
+                    "if": {"$eq": [{"$type": "$creator_id"}, "string"]},
+                    "then": {"$toObjectId": "$creator_id"},
+                    "else": "$creator_id"
+                }
+            }
+        }},
         # $lookup : recupere le pseudo de l'auteur
         {"$lookup": {
             "from": "users",
-            "localField": "creator_id",
+            "localField": "creator_oid",
             "foreignField": "_id",
             "as": "creator_info",
         }},
