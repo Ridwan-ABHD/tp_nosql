@@ -280,10 +280,186 @@ def toggle_comment_reaction(comments_col, comment_id, user_key, reaction):
     return active
 
 
-def render_home():
-    st.title("SocialDB Admin Panel")
-    st.caption("Schéma aligné sur USER, Posts et Comments")
-    st.write("Utilise le menu de gauche pour gérer les utilisateurs, posts et commentaires.")
+## ─────────────────────────────────────────────────────────────
+##  FONCTIONS D'AGRÉGATION MongoDB (Framework d'Agrégation)
+## ─────────────────────────────────────────────────────────────
+
+def agg_posts_par_utilisateur(users_col, posts_col):
+    """Nombre total de publications par utilisateur ($group + $lookup)."""
+    # Pipeline : on groupe les posts par creator_id, puis on fait un $lookup
+    # pour récupérer le pseudo de l'utilisateur depuis la collection users.
+    pipeline = [
+        {"$group": {"_id": "$creator_id", "total_posts": {"$sum": 1}}},
+        {"$lookup": {
+            "from": "users",
+            "localField": "_id",
+            "foreignField": "_id",
+            "as": "user_info",
+        }},
+        {"$unwind": {"path": "$user_info", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "pseudo": {"$ifNull": ["$user_info.pseudo", "Inconnu"]},
+            "total_posts": 1,
+        }},
+        {"$sort": {"total_posts": -1}},
+    ]
+    return list(posts_col.aggregate(pipeline))
+
+
+def agg_moyenne_likes(posts_col):
+    """Taux de participation moyen : moyenne de likes par post ($group + $avg)."""
+    # Pipeline : on regroupe tous les posts et on calcule la moyenne du champ "like".
+    pipeline = [
+        {"$group": {
+            "_id": None,
+            "moyenne_likes": {"$avg": "$like"},
+            "total_posts": {"$sum": 1},
+            "total_likes": {"$sum": "$like"},
+        }},
+    ]
+    result = list(posts_col.aggregate(pipeline))
+    if result:
+        return result[0]
+    return {"moyenne_likes": 0, "total_posts": 0, "total_likes": 0}
+
+
+def agg_top3_posts_par_commentaires(posts_col, comments_col):
+    """Top 3 des publications ayant le plus de commentaires ($group + $sort + $limit + $lookup)."""
+    # Pipeline : on groupe les commentaires par post_id, on compte, on trie
+    # et on récupère le contenu du post via $lookup.
+    pipeline = [
+        {"$group": {"_id": "$post_id", "nb_commentaires": {"$sum": 1}}},
+        {"$sort": {"nb_commentaires": -1}},
+        {"$limit": 3},
+        {"$lookup": {
+            "from": "posts",
+            "localField": "_id",
+            "foreignField": "_id",
+            "as": "post_info",
+        }},
+        {"$unwind": {"path": "$post_info", "preserveNullAndEmptyArrays": True}},
+        {"$lookup": {
+            "from": "users",
+            "localField": "post_info.creator_id",
+            "foreignField": "_id",
+            "as": "creator_info",
+        }},
+        {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "nb_commentaires": 1,
+            "contenu": {"$ifNull": ["$post_info.biography", ""]},
+            "likes": {"$ifNull": ["$post_info.like", 0]},
+            "pseudo_auteur": {"$ifNull": ["$creator_info.pseudo", "Inconnu"]},
+            "date": "$post_info.date",
+        }},
+    ]
+    return list(comments_col.aggregate(pipeline))
+
+
+def get_comments_per_post(posts_col):
+    """
+    Nombre de commentaires par publication via $lookup + $size.
+    Pipeline sur la collection posts avec jointure vers comments.
+    Utilise $addFields et $size pour calculer le nombre de commentaires.
+    """
+    pipeline = [
+        # $lookup : jointure posts._id <-> comments.post_id
+        {"$lookup": {
+            "from": "comments",
+            "localField": "_id",
+            "foreignField": "post_id",
+            "as": "comments_list",
+        }},
+        # $addFields : calcule la taille du tableau avec $size
+        {"$addFields": {
+            "nb_commentaires": {"$size": "$comments_list"},
+        }},
+        # $lookup : recupere le pseudo de l'auteur
+        {"$lookup": {
+            "from": "users",
+            "localField": "creator_id",
+            "foreignField": "_id",
+            "as": "creator_info",
+        }},
+        {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
+        # $project : garde uniquement les champs utiles
+        {"$project": {
+            "contenu": {"$ifNull": ["$biography", ""]},
+            "nb_commentaires": 1,
+            "likes": {"$ifNull": ["$like", 0]},
+            "pseudo_auteur": {"$ifNull": ["$creator_info.pseudo", "Inconnu"]},
+            "date": 1,
+        }},
+        # Tri par nombre de commentaires decroissant
+        {"$sort": {"nb_commentaires": -1}},
+    ]
+    return list(posts_col.aggregate(pipeline))
+
+
+## ─────────────────────────────────────────────────────────────
+##  PAGE TABLEAU DE BORD (Dashboard)
+## ─────────────────────────────────────────────────────────────
+
+def render_home(users_col, posts_col, comments_col):
+    st.title("🏠 Tableau de bord — SocialDB")
+    st.caption("Statistiques en temps réel via le Framework d'Agrégation MongoDB")
+
+    # --- Ligne 1 : Indicateurs globaux avec st.metric ---
+    stats = agg_moyenne_likes(posts_col)
+    nb_users = users_col.count_documents({})
+    nb_posts = stats.get("total_posts", 0)
+    nb_comments = comments_col.count_documents({})
+    moyenne_likes = stats.get("moyenne_likes", 0) or 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Utilisateurs", nb_users)
+    with col2:
+        st.metric("Publications", nb_posts)
+    with col3:
+        st.metric("Commentaires", nb_comments)
+    with col4:
+        # Taux de participation moyen (moyenne de likes par post)
+        st.metric("Moy. likes / post", f"{moyenne_likes:.1f}")
+
+    st.divider()
+
+    # --- Ligne 2 : deux colonnes côte à côte ---
+    col_left, col_right = st.columns(2)
+
+    # --- Colonne gauche : Publications par utilisateur ($group) ---
+    with col_left:
+        st.subheader("📊 Publications par utilisateur")
+        posts_par_user = agg_posts_par_utilisateur(users_col, posts_col)
+        if posts_par_user:
+            for entry in posts_par_user:
+                pseudo = entry.get("pseudo", "Inconnu")
+                total = entry.get("total_posts", 0)
+                st.metric(pseudo, f"{total} post{'s' if total > 1 else ''}")
+        else:
+            st.info("Aucune publication pour le moment.")
+
+    # --- Colonne droite : Top 3 publications les plus commentées ($group + $sort + $limit) ---
+    with col_right:
+        st.subheader("🏆 Top 3 — Plus commentées")
+        top3 = agg_top3_posts_par_commentaires(posts_col, comments_col)
+        if top3:
+            for i, entry in enumerate(top3, start=1):
+                contenu = entry.get("contenu", "")
+                apercu = (contenu[:80] + "…") if len(contenu) > 80 else contenu
+                auteur = entry.get("pseudo_auteur", "Inconnu")
+                nb_com = entry.get("nb_commentaires", 0)
+                likes = entry.get("likes", 0)
+                with st.container(border=True):
+                    st.markdown(f"**#{i} — {auteur}**")
+                    st.write(apercu if apercu else "_Pas de texte_")
+                    m1, m2 = st.columns(2)
+                    with m1:
+                        st.metric("Commentaires", nb_com)
+                    with m2:
+                        st.metric("Likes", likes)
+        else:
+            st.info("Aucun commentaire pour le moment.")
 
 
 def render_user_creation(users_col):
@@ -664,10 +840,10 @@ def social_media_app():
         st.stop()
 
     if "page" not in st.session_state:
-        st.session_state["page"] = "Accueil"
+        st.session_state["page"] = "🏠 Tableau de bord"
 
     pending_page = st.session_state.pop("pending_page", None)
-    if pending_page in ["Accueil", "Utilisateurs", "Posts", "Fil", "Profil"]:
+    if pending_page in ["🏠 Tableau de bord", "📝 Fil d'actualité / Publier", "Utilisateurs", "Profil"]:
         st.session_state["page"] = pending_page
 
     st.sidebar.title("Navigation")
@@ -683,17 +859,17 @@ def social_media_app():
 
     page = st.sidebar.radio(
         "Aller vers",
-        ["Accueil", "Utilisateurs", "Posts", "Fil", "Profil"],
+        ["🏠 Tableau de bord", "📝 Fil d'actualité / Publier", "Utilisateurs", "Profil"],
         key="page",
     )
 
-    if page == "Accueil":
-        render_home()
+    if page == "🏠 Tableau de bord":
+        render_home(users_col, posts_col, comments_col)
+    elif page == "📝 Fil d'actualité / Publier":
+        render_post_creation(users_col, posts_col)
+        st.divider()
+        render_feed(users_col, posts_col, comments_col)
     elif page == "Utilisateurs":
         render_user_creation(users_col)
-    elif page == "Posts":
-        render_post_creation(users_col, posts_col)
-    elif page == "Fil":
-        render_feed(users_col, posts_col, comments_col)
     elif page == "Profil":
         render_profile(users_col, posts_col)

@@ -1,22 +1,169 @@
 import streamlit as st
-from gestion import social_media_app
+from gestion import (
+    get_db,
+    get_collections,
+    ensure_indexes,
+    load_users,
+    agg_posts_par_utilisateur,
+    agg_moyenne_likes,
+    agg_top3_posts_par_commentaires,
+    get_comments_per_post,
+    render_post_creation,
+    render_feed,
+    render_user_creation,
+    render_profile,
+)
+from pymongo.errors import PyMongoError
 
 try:
     from streamlit.runtime.scriptrunner import get_script_run_ctx
-except Exception:  # Compatibilite selon version Streamlit
+except Exception:
     get_script_run_ctx = None
 
-# Utiliser la commande : "streamlit run tp_nosql/app.py" pour lancer l'application
+# Utiliser la commande : "streamlit run app.py" pour lancer l'application
+
+
+def render_accueil(users_col, posts_col, comments_col):
+    """Page Accueil : affiche les statistiques de la plateforme."""
+    st.title("Accueil - SocialDB")
+
+    # ─────────────────────────────────────────────────────────────
+    # Indicateurs globaux avec st.metric
+    # ─────────────────────────────────────────────────────────────
+    stats = agg_moyenne_likes(posts_col)
+    nb_users = users_col.count_documents({})
+    nb_posts = stats.get("total_posts", 0)
+    nb_comments = comments_col.count_documents({})
+    moyenne_likes = stats.get("moyenne_likes", 0) or 0
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Utilisateurs", nb_users)
+    with col2:
+        st.metric("Publications", nb_posts)
+    with col3:
+        st.metric("Commentaires", nb_comments)
+    with col4:
+        st.metric("Moy. likes / post", f"{moyenne_likes:.2f}")
+
+    st.divider()
+
+    # ─────────────────────────────────────────────────────────────
+    # Deux colonnes : Publications par utilisateur | Top 3 commentees
+    # ─────────────────────────────────────────────────────────────
+    col_left, col_right = st.columns(2)
+
+    with col_left:
+        st.subheader("Publications par utilisateur")
+        posts_par_user = agg_posts_par_utilisateur(users_col, posts_col)
+        if posts_par_user:
+            for entry in posts_par_user:
+                pseudo = entry.get("pseudo", "Inconnu")
+                total = entry.get("total_posts", 0)
+                st.metric(pseudo, f"{total} publication{'s' if total > 1 else ''}")
+        else:
+            st.info("Aucune publication pour le moment.")
+
+    with col_right:
+        st.subheader("Top 3 des publications les plus commentees")
+        all_posts = get_comments_per_post(posts_col)
+        top3 = all_posts[:3]
+        
+        if top3:
+            table_data = []
+            for i, entry in enumerate(top3, start=1):
+                contenu = entry.get("contenu", "")
+                apercu = (contenu[:40] + "...") if len(contenu) > 40 else (contenu or "-")
+                table_data.append({
+                    "Rang": f"#{i}",
+                    "Auteur": entry.get("pseudo_auteur", "Inconnu"),
+                    "Contenu": apercu,
+                    "Commentaires": entry.get("nb_commentaires", 0),
+                    "Likes": entry.get("likes", 0),
+                })
+            st.table(table_data)
+        else:
+            st.info("Aucune publication pour le moment.")
+
+    st.divider()
+
+    # ─────────────────────────────────────────────────────────────
+    # Engagement des utilisateurs
+    # ─────────────────────────────────────────────────────────────
+    st.subheader("Engagement des utilisateurs")
+    
+    all_posts_comments = get_comments_per_post(posts_col)
+    if all_posts_comments:
+        full_table = []
+        for entry in all_posts_comments:
+            contenu = entry.get("contenu", "")
+            apercu = (contenu[:60] + "...") if len(contenu) > 60 else (contenu or "-")
+            full_table.append({
+                "Auteur": entry.get("pseudo_auteur", "Inconnu"),
+                "Contenu": apercu,
+                "Nb commentaires": entry.get("nb_commentaires", 0),
+                "Likes": entry.get("likes", 0),
+            })
+        st.table(full_table)
+    else:
+        st.info("Aucune publication pour le moment.")
 
 
 def main():
-    st.set_page_config(page_title="SocialDB", page_icon="💬", layout="wide")
-    social_media_app()
+    st.set_page_config(page_title="SocialDB", page_icon="S", layout="wide")
+
+    # Connexion MongoDB
+    try:
+        db = get_db()
+        db.command("ping")
+        users_col, posts_col, comments_col = get_collections()
+        ensure_indexes(users_col)
+    except PyMongoError as exc:
+        st.error("Connexion MongoDB impossible. Verifie que MongoDB est demarre sur localhost:27017.")
+        st.error(str(exc))
+        st.stop()
+
+    # ─────────────────────────────────────────────────────────────
+    # Navigation dans la sidebar (st.sidebar.radio)
+    # ─────────────────────────────────────────────────────────────
+    st.sidebar.title("Navigation")
+
+    # Selecteur d'utilisateur actif pour interagir
+    users = load_users(users_col)
+    if users:
+        active_user_options = {u.get("pseudo", "sans pseudo"): str(u["_id"]) for u in users}
+        selected_active_pseudo = st.sidebar.selectbox(
+            "Interagir en tant que",
+            options=list(active_user_options.keys()),
+            index=0,
+        )
+        st.session_state["active_user_id"] = active_user_options[selected_active_pseudo]
+
+    # Menu de navigation : 5 pages
+    page = st.sidebar.radio(
+        "Aller vers",
+        ["Accueil", "Utilisateurs", "Posts", "Fil", "Profil"],
+        index=0,
+    )
+
+    # ─────────────────────────────────────────────────────────────
+    # Affichage de la page selectionnee
+    # ─────────────────────────────────────────────────────────────
+    if page == "Accueil":
+        render_accueil(users_col, posts_col, comments_col)
+    elif page == "Utilisateurs":
+        render_user_creation(users_col)
+    elif page == "Posts":
+        render_post_creation(users_col, posts_col)
+    elif page == "Fil":
+        render_feed(users_col, posts_col, comments_col)
+    elif page == "Profil":
+        render_profile(users_col, posts_col)
 
 
 if __name__ == "__main__":
     has_streamlit_context = get_script_run_ctx is not None and get_script_run_ctx() is not None
     if not has_streamlit_context:
-        print("Ce script doit etre lance avec: streamlit run tp_nosql/app.py")
+        print("Ce script doit etre lance avec: streamlit run app.py")
     else:
         main()
