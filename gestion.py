@@ -1,12 +1,13 @@
+## Imports
 import base64
 from datetime import datetime
-
 import streamlit as st
 from bson.objectid import ObjectId
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
 
+## Configuration MongoDB
 @st.cache_resource
 def get_db():
     client = MongoClient("mongodb://localhost:27017")
@@ -22,6 +23,7 @@ def ensure_indexes(users_col):
     users_col.create_index("pseudo", unique=True)
 
 
+## Chargement des donnees
 def load_users(users_col):
     return list(users_col.find().sort("date", -1))
 
@@ -34,13 +36,13 @@ def load_comments_for_post(comments_col, post_id):
     return list(comments_col.find({"post_id": post_id}).sort("date", -1))
 
 
+## Formatage et utilitaires
 def format_date(value):
     if not value:
         return "date inconnue"
     if isinstance(value, datetime):
         now = datetime.now()
         delta_days = (now.date() - value.date()).days
-
         if delta_days <= 0:
             return value.strftime("%H:%M")
         if delta_days <= 6:
@@ -72,11 +74,19 @@ def data_url_to_bytes(data_url):
         return None
 
 
+def relation_count(value):
+    if isinstance(value, list):
+        return len(value)
+    if isinstance(value, int):
+        return value
+    return 0
+
+
+## Rendu avatars
 def render_avatar(avatar_value, width=140):
     if not avatar_value:
         st.info("Aucun avatar")
         return
-
     if isinstance(avatar_value, str) and avatar_value.startswith("data:"):
         try:
             _, b64_data = avatar_value.split(",", 1)
@@ -86,7 +96,6 @@ def render_avatar(avatar_value, width=140):
         except Exception:
             st.warning("Avatar invalide")
             return
-
     st.image(avatar_value, width=width)
 
 
@@ -94,11 +103,10 @@ def render_round_avatar(avatar_value, size=140):
     if not avatar_value:
         st.info("Aucun avatar")
         return
-
     st.markdown(
         f"""
-        <div style=\"display:flex;justify-content:center;\">
-            <img src=\"{avatar_value}\" style=\"width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;border:3px solid #e5e7eb;\" />
+        <div style="display:flex;justify-content:center;">
+            <img src="{avatar_value}" style="width:{size}px;height:{size}px;border-radius:50%;object-fit:cover;border:3px solid #e5e7eb;" />
         </div>
         """,
         unsafe_allow_html=True,
@@ -110,7 +118,6 @@ def render_post_media(post):
     post_type = post.get("type", "")
     if not media_value:
         return
-
     if post_type == "image":
         media_bytes = data_url_to_bytes(media_value)
         if media_bytes is not None:
@@ -125,53 +132,7 @@ def render_post_media(post):
             st.video(media_value)
 
 
-def relation_count(value):
-    if isinstance(value, list):
-        return len(value)
-    if isinstance(value, int):
-        return value
-    return 0
-
-
-def toggle_follow_user(users_col, follower_id, target_id):
-    if not follower_id or not target_id or follower_id == target_id:
-        return None
-
-    follower_obj_id = ObjectId(follower_id)
-    target_obj_id = ObjectId(target_id)
-
-    follower = users_col.find_one({"_id": follower_obj_id}, {"following": 1})
-    if not follower:
-        return None
-
-    following = follower.get("following", [])
-    is_following = target_id in following
-
-    if is_following:
-        users_col.update_one({"_id": follower_obj_id}, {"$pull": {"following": target_id}})
-        users_col.update_one({"_id": target_obj_id}, {"$pull": {"followers": follower_id}})
-        return False
-
-    users_col.update_one({"_id": follower_obj_id}, {"$addToSet": {"following": target_id}})
-    users_col.update_one({"_id": target_obj_id}, {"$addToSet": {"followers": follower_id}})
-    return True
-
-
-def delete_post(users_col, posts_col, comments_col, post_id):
-    post = posts_col.find_one({"_id": ObjectId(post_id)}, {"creator_id": 1})
-    if not post:
-        return False
-
-    creator_id = post.get("creator_id")
-    comments_col.delete_many({"post_id": ObjectId(post_id)})
-    posts_col.delete_one({"_id": ObjectId(post_id)})
-
-    if creator_id:
-        users_col.update_one({"_id": creator_id}, {"$inc": {"numberOfPosts": -1}})
-
-    return True
-
-
+## Operations CRUD - Utilisateurs
 def create_user(users_col, pseudo, avatar, gender, birthday, language, biography, password):
     birthday_dt = datetime.combine(birthday, datetime.min.time())
     doc = {
@@ -190,6 +151,26 @@ def create_user(users_col, pseudo, avatar, gender, birthday, language, biography
     return users_col.insert_one(doc)
 
 
+def toggle_follow_user(users_col, follower_id, target_id):
+    if not follower_id or not target_id or follower_id == target_id:
+        return None
+    follower_obj_id = ObjectId(follower_id)
+    target_obj_id = ObjectId(target_id)
+    follower = users_col.find_one({"_id": follower_obj_id}, {"following": 1})
+    if not follower:
+        return None
+    following = follower.get("following", [])
+    is_following = target_id in following
+    if is_following:
+        users_col.update_one({"_id": follower_obj_id}, {"$pull": {"following": target_id}})
+        users_col.update_one({"_id": target_obj_id}, {"$pull": {"followers": follower_id}})
+        return False
+    users_col.update_one({"_id": follower_obj_id}, {"$addToSet": {"following": target_id}})
+    users_col.update_one({"_id": target_obj_id}, {"$addToSet": {"followers": follower_id}})
+    return True
+
+
+## Operations CRUD - Posts
 def create_post(users_col, posts_col, creator_id, biography, post_type, media_data, media_name):
     doc = {
         "creator_id": ObjectId(creator_id),
@@ -206,6 +187,39 @@ def create_post(users_col, posts_col, creator_id, biography, post_type, media_da
     return result
 
 
+def delete_post(users_col, posts_col, comments_col, post_id):
+    post = posts_col.find_one({"_id": ObjectId(post_id)}, {"creator_id": 1})
+    if not post:
+        return False
+    creator_id = post.get("creator_id")
+    comments_col.delete_many({"post_id": ObjectId(post_id)})
+    posts_col.delete_one({"_id": ObjectId(post_id)})
+    if creator_id:
+        users_col.update_one({"_id": creator_id}, {"$inc": {"numberOfPosts": -1}})
+    return True
+
+
+def toggle_post_reaction(posts_col, post_id, user_key, reaction):
+    if reaction not in ["like", "share"]:
+        return False
+    array_field = f"{reaction}_users"
+    count_field = reaction
+    post = posts_col.find_one({"_id": ObjectId(post_id)}, {array_field: 1})
+    users = post.get(array_field, []) if post else []
+    if user_key in users:
+        users.remove(user_key)
+        active = False
+    else:
+        users.append(user_key)
+        active = True
+    posts_col.update_one(
+        {"_id": ObjectId(post_id)},
+        {"$set": {array_field: users, count_field: len(users)}},
+    )
+    return active
+
+
+## Operations CRUD - Commentaires
 def create_comment(comments_col, user_id, post_id, text):
     doc = {
         "user_id": ObjectId(user_id),
@@ -218,61 +232,19 @@ def create_comment(comments_col, user_id, post_id, text):
     return comments_col.insert_one(doc)
 
 
-def increment_post_like(posts_col, post_id):
-    posts_col.update_one({"_id": ObjectId(post_id)}, {"$inc": {"like": 1}})
-
-
-def increment_post_share(posts_col, post_id):
-    posts_col.update_one({"_id": ObjectId(post_id)}, {"$inc": {"share": 1}})
-
-
-def increment_comment_like(comments_col, comment_id):
-    comments_col.update_one({"_id": ObjectId(comment_id)}, {"$inc": {"like": 1}})
-
-
-def increment_comment_share(comments_col, comment_id):
-    comments_col.update_one({"_id": ObjectId(comment_id)}, {"$inc": {"share": 1}})
-
-
-def toggle_post_reaction(posts_col, post_id, user_key, reaction):
-    if reaction not in ["like", "share"]:
-        return False
-
-    array_field = f"{reaction}_users"
-    count_field = reaction
-    post = posts_col.find_one({"_id": ObjectId(post_id)}, {array_field: 1})
-    users = post.get(array_field, []) if post else []
-
-    if user_key in users:
-        users.remove(user_key)
-        active = False
-    else:
-        users.append(user_key)
-        active = True
-
-    posts_col.update_one(
-        {"_id": ObjectId(post_id)},
-        {"$set": {array_field: users, count_field: len(users)}},
-    )
-    return active
-
-
 def toggle_comment_reaction(comments_col, comment_id, user_key, reaction):
     if reaction not in ["like", "share"]:
         return False
-
     array_field = f"{reaction}_users"
     count_field = reaction
     comment = comments_col.find_one({"_id": ObjectId(comment_id)}, {array_field: 1})
     users = comment.get(array_field, []) if comment else []
-
     if user_key in users:
         users.remove(user_key)
         active = False
     else:
         users.append(user_key)
         active = True
-
     comments_col.update_one(
         {"_id": ObjectId(comment_id)},
         {"$set": {array_field: users, count_field: len(users)}},
@@ -280,18 +252,10 @@ def toggle_comment_reaction(comments_col, comment_id, user_key, reaction):
     return active
 
 
-## ─────────────────────────────────────────────────────────────
-##  FONCTIONS D'AGRÉGATION MongoDB (Framework d'Agrégation)
-## ─────────────────────────────────────────────────────────────
-
+## Fonctions d'agregation MongoDB
 def agg_posts_par_utilisateur(users_col, posts_col):
-    """Top 5 des contributeurs les plus actifs ($group + $lookup + $sort + $limit)."""
-    # Pipeline : on groupe les posts par creator_id, puis on fait un $lookup
-    # pour récupérer le pseudo de l'utilisateur depuis la collection users.
-    # Note: creator_id peut etre un ObjectId ou une string selon l'import
     pipeline = [
         {"$group": {"_id": "$creator_id", "total_posts": {"$sum": 1}}},
-        # Convertit _id en ObjectId si c'est une string pour le lookup
         {"$addFields": {
             "creator_oid": {
                 "$cond": {
@@ -319,8 +283,6 @@ def agg_posts_par_utilisateur(users_col, posts_col):
 
 
 def agg_moyenne_likes(posts_col):
-    """Taux de participation moyen : moyenne de likes par post ($group + $avg)."""
-    # Pipeline : on regroupe tous les posts et on calcule la moyenne du champ "like".
     pipeline = [
         {"$group": {
             "_id": None,
@@ -335,72 +297,11 @@ def agg_moyenne_likes(posts_col):
     return {"moyenne_likes": 0, "total_posts": 0, "total_likes": 0}
 
 
-def agg_top3_posts_par_commentaires(posts_col, comments_col):
-    """Top 3 des publications ayant le plus de commentaires ($group + $sort + $limit + $lookup)."""
-    # Pipeline : on groupe les commentaires par post_id, on compte, on trie
-    # et on récupère le contenu du post via $lookup.
-    # Note: post_id peut etre string ou ObjectId selon l'import
-    pipeline = [
-        {"$group": {"_id": "$post_id", "nb_commentaires": {"$sum": 1}}},
-        {"$sort": {"nb_commentaires": -1}},
-        {"$limit": 3},
-        # Convertit post_id en ObjectId si c'est une string
-        {"$addFields": {
-            "post_oid": {
-                "$cond": {
-                    "if": {"$eq": [{"$type": "$_id"}, "string"]},
-                    "then": {"$toObjectId": "$_id"},
-                    "else": "$_id"
-                }
-            }
-        }},
-        {"$lookup": {
-            "from": "posts",
-            "localField": "post_oid",
-            "foreignField": "_id",
-            "as": "post_info",
-        }},
-        {"$unwind": {"path": "$post_info", "preserveNullAndEmptyArrays": True}},
-        # Convertit creator_id en ObjectId si c'est une string
-        {"$addFields": {
-            "creator_oid": {
-                "$cond": {
-                    "if": {"$eq": [{"$type": "$post_info.creator_id"}, "string"]},
-                    "then": {"$toObjectId": "$post_info.creator_id"},
-                    "else": "$post_info.creator_id"
-                }
-            }
-        }},
-        {"$lookup": {
-            "from": "users",
-            "localField": "creator_oid",
-            "foreignField": "_id",
-            "as": "creator_info",
-        }},
-        {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
-        {"$project": {
-            "nb_commentaires": 1,
-            "contenu": {"$ifNull": ["$post_info.biography", ""]},
-            "likes": {"$ifNull": ["$post_info.like", 0]},
-            "pseudo_auteur": {"$ifNull": ["$creator_info.pseudo", "Inconnu"]},
-            "date": "$post_info.date",
-        }},
-    ]
-    return list(comments_col.aggregate(pipeline))
-
-
 def get_comments_per_post(posts_col):
-    """
-    Nombre de commentaires par publication via $lookup + $size.
-    Pipeline sur la collection posts avec jointure vers comments.
-    Utilise $addFields et $size pour calculer le nombre de commentaires.
-    """
     pipeline = [
-        # Convertit _id en string pour matcher avec comments.post_id (qui est string)
         {"$addFields": {
             "post_id_str": {"$toString": "$_id"}
         }},
-        # $lookup : jointure posts._id <-> comments.post_id
         {"$lookup": {
             "from": "comments",
             "let": {"pid": "$_id", "pid_str": "$post_id_str"},
@@ -417,11 +318,9 @@ def get_comments_per_post(posts_col):
             ],
             "as": "comments_list",
         }},
-        # $addFields : calcule la taille du tableau avec $size
         {"$addFields": {
             "nb_commentaires": {"$size": "$comments_list"},
         }},
-        # Convertit creator_id en ObjectId si c'est une string
         {"$addFields": {
             "creator_oid": {
                 "$cond": {
@@ -431,7 +330,6 @@ def get_comments_per_post(posts_col):
                 }
             }
         }},
-        # $lookup : recupere le pseudo de l'auteur
         {"$lookup": {
             "from": "users",
             "localField": "creator_oid",
@@ -439,7 +337,6 @@ def get_comments_per_post(posts_col):
             "as": "creator_info",
         }},
         {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
-        # $project : garde uniquement les champs utiles
         {"$project": {
             "contenu": {"$ifNull": ["$biography", ""]},
             "nb_commentaires": 1,
@@ -447,87 +344,21 @@ def get_comments_per_post(posts_col):
             "pseudo_auteur": {"$ifNull": ["$creator_info.pseudo", "Inconnu"]},
             "date": 1,
         }},
-        # Tri par nombre de commentaires decroissant
         {"$sort": {"nb_commentaires": -1}},
     ]
     return list(posts_col.aggregate(pipeline))
 
 
-## ─────────────────────────────────────────────────────────────
-##  PAGE TABLEAU DE BORD (Dashboard)
-## ─────────────────────────────────────────────────────────────
-
-def render_home(users_col, posts_col, comments_col):
-    st.title("🏠 Tableau de bord — SocialDB")
-    st.caption("Statistiques en temps réel via le Framework d'Agrégation MongoDB")
-
-    # --- Ligne 1 : Indicateurs globaux avec st.metric ---
-    stats = agg_moyenne_likes(posts_col)
-    nb_users = users_col.count_documents({})
-    nb_posts = stats.get("total_posts", 0)
-    nb_comments = comments_col.count_documents({})
-    moyenne_likes = stats.get("moyenne_likes", 0) or 0
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Utilisateurs", nb_users)
-    with col2:
-        st.metric("Publications", nb_posts)
-    with col3:
-        st.metric("Commentaires", nb_comments)
-    with col4:
-        # Taux de participation moyen (moyenne de likes par post)
-        st.metric("Moy. likes / post", f"{moyenne_likes:.1f}")
-
-    st.divider()
-
-    # --- Ligne 2 : deux colonnes côte à côte ---
-    col_left, col_right = st.columns(2)
-
-    # --- Colonne gauche : Publications par utilisateur ($group) ---
-    with col_left:
-        st.subheader("📊 Publications par utilisateur")
-        posts_par_user = agg_posts_par_utilisateur(users_col, posts_col)
-        if posts_par_user:
-            for entry in posts_par_user:
-                pseudo = entry.get("pseudo", "Inconnu")
-                total = entry.get("total_posts", 0)
-                st.metric(pseudo, f"{total} post{'s' if total > 1 else ''}")
-        else:
-            st.info("Aucune publication pour le moment.")
-
-    # --- Colonne droite : Top 3 publications les plus commentées ($group + $sort + $limit) ---
-    with col_right:
-        st.subheader("🏆 Top 3 — Plus commentées")
-        top3 = agg_top3_posts_par_commentaires(posts_col, comments_col)
-        if top3:
-            for i, entry in enumerate(top3, start=1):
-                contenu = entry.get("contenu", "")
-                apercu = (contenu[:80] + "…") if len(contenu) > 80 else contenu
-                auteur = entry.get("pseudo_auteur", "Inconnu")
-                nb_com = entry.get("nb_commentaires", 0)
-                likes = entry.get("likes", 0)
-                with st.container(border=True):
-                    st.markdown(f"**#{i} — {auteur}**")
-                    st.write(apercu if apercu else "_Pas de texte_")
-                    m1, m2 = st.columns(2)
-                    with m1:
-                        st.metric("Commentaires", nb_com)
-                    with m2:
-                        st.metric("Likes", likes)
-        else:
-            st.info("Aucun commentaire pour le moment.")
-
-
+## Interface - Gestion des utilisateurs
 def render_user_creation(users_col):
-    st.subheader("Créer un utilisateur")
+    st.subheader("Creer un utilisateur")
     with st.form("create_user_form", clear_on_submit=True):
         pseudo = st.text_input("Pseudo (unique)")        
         password = st.text_input("Mot de passe", type="password")
         avatar = st.file_uploader("Uploader un avatar", type=["png", "jpg", "jpeg", "webp"])
-        gender = st.selectbox("Genre", ["Non spécifié", "Homme", "Femme", "Autre"], index=0)
+        gender = st.selectbox("Genre", ["Non specifie", "Homme", "Femme", "Autre"], index=0)
         birthday = st.date_input("Birthday")
-        language = st.selectbox("Langage", ["Français", "English"], index=0)
+        language = st.selectbox("Langage", ["Francais", "English"], index=0)
         biography = st.text_area("Biographie")
         submit = st.form_submit_button("Ajouter")
 
@@ -535,15 +366,15 @@ def render_user_creation(users_col):
         if not pseudo.strip() or not password:
             st.error("Pseudo et mot de passe sont obligatoires.")
             return
-
         try:
             avatar_value = uploaded_file_to_data_url(avatar)
             create_user(users_col, pseudo, avatar_value, gender, birthday, language, biography, password)
-            st.success("Utilisateur ajouté avec succes.")
+            st.success("Utilisateur ajoute avec succes.")
         except PyMongoError as exc:
             st.error(f"Erreur MongoDB: {exc}")
 
 
+## Interface - Profil utilisateur
 def render_profile(users_col, posts_col):
     st.markdown("<h2 style='text-align:center;'>Profil utilisateur</h2>", unsafe_allow_html=True)
     users = load_users(users_col)
@@ -558,7 +389,7 @@ def render_profile(users_col, posts_col):
     default_index = pseudo_list.index(default_pseudo) if default_pseudo in pseudo_list else 0
 
     selected_pseudo = st.selectbox(
-        "Sélectionner un profil",
+        "Selectionner un profil",
         options=pseudo_list,
         index=default_index,
         key="profile_select_pseudo",
@@ -598,7 +429,7 @@ def render_profile(users_col, posts_col):
         stat_col_1, stat_col_2 = st.columns(2)
         with stat_col_1:
             st.metric("Posts", int(user.get("numberOfPosts", len(user_posts))))
-            st.metric("Abonnés", relation_count(user.get("followers", [])))
+            st.metric("Abonnes", relation_count(user.get("followers", [])))
         with stat_col_2:
             st.metric("Likes totaux", total_likes)
             st.metric("Abonnements", relation_count(user.get("following", [])))
@@ -618,12 +449,13 @@ def render_profile(users_col, posts_col):
                 st.caption(f"Likes: {post.get('like', 0)} | Shares: {post.get('share', 0)}")
 
 
+## Interface - Creation de post
 def render_post_creation(users_col, posts_col):
-    st.subheader("Créer un post")
+    st.subheader("Creer un post")
     users = load_users(users_col)
 
     if not users:
-        st.info("Crée d'abord au moins un utilisateur.")
+        st.info("Cree d'abord au moins un utilisateur.")
         return
 
     user_options = {u.get("pseudo", "sans pseudo"): str(u["_id"]) for u in users}
@@ -631,7 +463,7 @@ def render_post_creation(users_col, posts_col):
     with st.form("create_post_form", clear_on_submit=True):
         selected_label = st.selectbox("Creator", options=list(user_options.keys()))
         biography = st.text_area("Biographie")
-        media_file = st.file_uploader("Ajouter une image ou une vidéo", type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "avi", "mkv"])
+        media_file = st.file_uploader("Ajouter une image ou une video", type=["png", "jpg", "jpeg", "webp", "mp4", "mov", "avi", "mkv"])
         submit = st.form_submit_button("Publier")
 
     if submit:
@@ -640,7 +472,7 @@ def render_post_creation(users_col, posts_col):
         has_media = media_file is not None
 
         if not has_biography and not has_media:
-            st.error("Ajoute une biographie, une image/vidéo, ou les deux.")
+            st.error("Ajoute une biographie, une image/video, ou les deux.")
             return
 
         post_type = "text"
@@ -654,7 +486,7 @@ def render_post_creation(users_col, posts_col):
             elif media_type.startswith("video/"):
                 post_type = "video"
             else:
-                st.error("Format media non supporte. Utilise une image ou une vidéo.")
+                st.error("Format media non supporte. Utilise une image ou une video.")
                 return
             media_data = uploaded_file_to_data_url(media_file)
             media_name = media_file.name
@@ -669,13 +501,14 @@ def render_post_creation(users_col, posts_col):
                 media_data,
                 media_name,
             )
-            st.success("Post publié avec succès.")
+            st.success("Post publie avec succes.")
         except PyMongoError as exc:
             st.error(f"Erreur MongoDB: {exc}")
 
 
+## Interface - Fil d'actualites
 def render_feed(users_col, posts_col, comments_col):
-    st.markdown("<h2 style='text-align:center;'>Fil d'actualités</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align:center;'>Fil d'actualites</h2>", unsafe_allow_html=True)
     st.markdown(
         """
         <style>
@@ -775,7 +608,6 @@ def render_feed(users_col, posts_col, comments_col):
                             if creator:
                                 if st.button(f"{creator_name}", key=f"go_profile_{post_id}"):
                                     st.session_state["selected_profile_pseudo"] = creator_name
-                                    st.session_state["pending_page"] = "Profil"
                                     st.rerun()
                             else:
                                 st.markdown("**Utilisateur inconnu**")
@@ -883,50 +715,3 @@ def render_feed(users_col, posts_col, comments_col):
                             st.rerun()
                         except PyMongoError as exc:
                             st.error(f"Erreur MongoDB: {exc}")
-
-
-def social_media_app():
-    try:
-        db = get_db()
-        db.command("ping")
-        users_col, posts_col, comments_col = get_collections()
-        ensure_indexes(users_col)
-    except PyMongoError as exc:
-        st.error("Connexion MongoDB impossible. Verifie que MongoDB est demarre sur localhost:27017.")
-        st.error(str(exc))
-        st.stop()
-
-    if "page" not in st.session_state:
-        st.session_state["page"] = "🏠 Tableau de bord"
-
-    pending_page = st.session_state.pop("pending_page", None)
-    if pending_page in ["🏠 Tableau de bord", "📝 Fil d'actualité / Publier", "Utilisateurs", "Profil"]:
-        st.session_state["page"] = pending_page
-
-    st.sidebar.title("Navigation")
-    users = load_users(users_col)
-    if users:
-        active_user_options = {u.get("pseudo", "sans pseudo"): str(u["_id"]) for u in users}
-        selected_active_pseudo = st.sidebar.selectbox(
-            "Interagir en tant que",
-            options=list(active_user_options.keys()),
-            index=0,
-        )
-        st.session_state["active_user_id"] = active_user_options[selected_active_pseudo]
-
-    page = st.sidebar.radio(
-        "Aller vers",
-        ["🏠 Tableau de bord", "📝 Fil d'actualité / Publier", "Utilisateurs", "Profil"],
-        key="page",
-    )
-
-    if page == "🏠 Tableau de bord":
-        render_home(users_col, posts_col, comments_col)
-    elif page == "📝 Fil d'actualité / Publier":
-        render_post_creation(users_col, posts_col)
-        st.divider()
-        render_feed(users_col, posts_col, comments_col)
-    elif page == "Utilisateurs":
-        render_user_creation(users_col)
-    elif page == "Profil":
-        render_profile(users_col, posts_col)

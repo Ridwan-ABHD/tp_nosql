@@ -1,3 +1,4 @@
+## Imports
 import streamlit as st
 from gestion import (
     get_db,
@@ -6,7 +7,6 @@ from gestion import (
     load_users,
     agg_posts_par_utilisateur,
     agg_moyenne_likes,
-    agg_top3_posts_par_commentaires,
     get_comments_per_post,
     render_post_creation,
     render_feed,
@@ -14,11 +14,6 @@ from gestion import (
     render_profile,
 )
 from pymongo.errors import PyMongoError
-
-try:
-    from streamlit.runtime.scriptrunner import get_script_run_ctx
-except Exception:
-    get_script_run_ctx = None
 
 # Utiliser la commande : "streamlit run app.py" pour lancer l'application
 
@@ -151,8 +146,4 @@ def main():
 
 
 if __name__ == "__main__":
-    has_streamlit_context = get_script_run_ctx is not None and get_script_run_ctx() is not None
-    if not has_streamlit_context:
-        print("Ce script doit etre lance avec: streamlit run app.py")
-    else:
-        main()
+    main()
