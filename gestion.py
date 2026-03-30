@@ -1,58 +1,153 @@
 from datetime import datetime
-from pymongo import MongoClient
-from bson.objectid import ObjectId
+
 import streamlit as st
+from bson.objectid import ObjectId
+from pymongo import MongoClient
+from pymongo.errors import PyMongoError
 
-# Connexion à MongoDB
-client = MongoClient("mongodb://localhost:27017")
-db = client["SocialDB"]  # Base de données du projet
 
-# Collections
-users_col = db["users"]
-posts_col = db["posts"]
-comments_col = db["comments"]
+@st.cache_resource
+def get_db():
+    client = MongoClient("mongodb://localhost:27017")
+    return client["SocialDB"]
 
-# Fonction pour l'application Réseaux Sociaux
+
+def get_collections():
+    db = get_db()
+    return db["users"], db["posts"], db["comments"]
+
+
+def load_users(users_col):
+    return list(users_col.find().sort("created_at", -1))
+
+
+def load_posts(posts_col):
+    return list(posts_col.find().sort("created_at", -1))
+
+
+def format_date(value):
+    if not value:
+        return "date inconnue"
+    if isinstance(value, datetime):
+        return value.strftime("%d/%m/%Y %H:%M")
+    return str(value)
+
+
+def create_user(users_col, username, email, bio):
+    doc = {
+        "username": username.strip(),
+        "email": email.strip(),
+        "bio": bio.strip(),
+        "created_at": datetime.now(),
+    }
+    return users_col.insert_one(doc)
+
+
+def create_post(posts_col, author_id, content):
+    doc = {
+        "author_id": ObjectId(author_id),
+        "content": content.strip(),
+        "created_at": datetime.now(),
+        "likes_count": 0,
+    }
+    return posts_col.insert_one(doc)
+
+
+def render_home():
+    st.title("SocialDB Admin Panel")
+    st.caption("Debut d'application de reseau social avec MongoDB + Streamlit")
+    st.write("Utilise le menu de gauche pour creer des utilisateurs, publier et consulter le fil.")
+
+
+def render_user_creation(users_col):
+    st.subheader("Creer un utilisateur")
+    with st.form("create_user_form", clear_on_submit=True):
+        username = st.text_input("Nom d'utilisateur")
+        email = st.text_input("Email")
+        bio = st.text_area("Bio")
+        submit = st.form_submit_button("Ajouter")
+
+    if submit:
+        if not username.strip() or not email.strip():
+            st.error("Le nom d'utilisateur et l'email sont obligatoires.")
+            return
+
+        try:
+            create_user(users_col, username, email, bio)
+            st.success("Utilisateur ajoute avec succes.")
+        except PyMongoError as exc:
+            st.error(f"Erreur MongoDB: {exc}")
+
+
+def render_post_creation(users_col, posts_col):
+    st.subheader("Creer un post")
+    users = load_users(users_col)
+
+    if not users:
+        st.info("Cree d'abord au moins un utilisateur.")
+        return
+
+    user_options = {f"{u.get('username', 'sans nom')} ({u.get('email', '-')})": str(u["_id"]) for u in users}
+
+    with st.form("create_post_form", clear_on_submit=True):
+        selected_label = st.selectbox("Auteur", options=list(user_options.keys()))
+        content = st.text_area("Contenu du post")
+        submit = st.form_submit_button("Publier")
+
+    if submit:
+        if not content.strip():
+            st.error("Le contenu du post est obligatoire.")
+            return
+
+        try:
+            create_post(posts_col, user_options[selected_label], content)
+            st.success("Post publie avec succes.")
+        except PyMongoError as exc:
+            st.error(f"Erreur MongoDB: {exc}")
+
+
+def render_feed(users_col, posts_col):
+    st.subheader("Fil d'actualites")
+    posts = load_posts(posts_col)
+    users = {str(u["_id"]): u for u in load_users(users_col)}
+
+    if not posts:
+        st.info("Aucun post pour le moment.")
+        return
+
+    for post in posts:
+        author = users.get(str(post.get("author_id")))
+        author_name = author.get("username", "Utilisateur inconnu") if author else "Utilisateur inconnu"
+        created_at = format_date(post.get("created_at"))
+
+        with st.container(border=True):
+            st.markdown(f"**{author_name}** - {created_at}")
+            st.write(post.get("content", ""))
+            st.caption(f"Likes: {post.get('likes_count', 0)}")
+
+
 def social_media_app():
-    st.title("Bienvenue sur SocialDB !")
-    st.write("Cette plateforme vous permet de créer des posts, de commenter et d'interagir avec d'autres utilisateurs.")
+    try:
+        db = get_db()
+        db.command("ping")
+        users_col, posts_col, _comments_col = get_collections()
+    except PyMongoError as exc:
+        st.error("Connexion MongoDB impossible. Verifie que MongoDB est demarre sur localhost:27017.")
+        st.error(str(exc))
+        st.stop()
 
-    # Section pour créer un post
-    st.header("Créer un nouveau post")
-    post_content = st.text_area("Contenu du post", "")
-    if st.button("Publier"):
-        if post_content.strip() != "":
-            new_post = {
-                "content": post_content,
-                "created_at": datetime.now(),
-                "likes": 0,
-                "comments": []
-            }
-            posts_col.insert_one(new_post)
-            st.success("Post publié avec succès !")
-        else:
-            st.error("Le contenu du post ne peut pas être vide.")
+    st.sidebar.title("Navigation")
+    page = st.sidebar.radio(
+        "Aller vers",
+        ["Accueil", "Utilisateurs", "Posts", "Fil"],
+        index=0,
+    )
 
-    # Section pour afficher les posts existants
-    st.header("Posts récents")
-    recent_posts = posts_col.find().sort("created_at", -1).limit(10)
-    for post in recent_posts:
-        st.subheader(f"Post ID: {post['_id']}")
-        st.write(post["content"])
-        st.write(f"Publié le: {post['created_at'].strftime('%Y-%m-%d %H:%M:%S')}")
-        st.write(f"Likes: {post['likes']}")
-
-        # Section pour ajouter un commentaire
-        comment_content = st.text_input(f"Ajouter un commentaire au post {post['_id']}", key=str(post['_id']))
-        if st.button(f"Commenter sur le post {post['_id']}"):
-            if comment_content.strip() != "":
-                new_comment = {
-                    "content": comment_content,
-                    "created_at": datetime.now(),
-                    "post_id": post["_id"]
-                }
-                comments_col.insert_one(new_comment)
-                posts_col.update_one({"_id": post["_id"]}, {"$push": {"comments": new_comment}})
-                st.success("Commentaire ajouté avec succès !")
-            else:
-                st.error("Le contenu du commentaire ne peut pas être vide.")
+    if page == "Accueil":
+        render_home()
+    elif page == "Utilisateurs":
+        render_user_creation(users_col)
+    elif page == "Posts":
+        render_post_creation(users_col, posts_col)
+    elif page == "Fil":
+        render_feed(users_col, posts_col)
