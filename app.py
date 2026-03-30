@@ -1,7 +1,3 @@
-# app.py – Front-end Streamlit pour la plateforme SocialDB
-# TP NoSQL – Projet B : Plateforme de médias sociaux
-
-
 import streamlit as st
 from pymongo import MongoClient
 from datetime import datetime
