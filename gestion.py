@@ -297,6 +297,62 @@ def agg_moyenne_likes(posts_col):
     return {"moyenne_likes": 0, "total_posts": 0, "total_likes": 0}
 
 
+## Top 10 engagement par score (likes + commentaires)
+def get_top_engagement(posts_col):
+    pipeline = [
+        {"$addFields": {
+            "post_id_str": {"$toString": "$_id"}
+        }},
+        {"$lookup": {
+            "from": "comments",
+            "let": {"pid": "$_id", "pid_str": "$post_id_str"},
+            "pipeline": [
+                {"$match": {
+                    "$expr": {
+                        "$or": [
+                            {"$eq": ["$post_id", "$$pid"]},
+                            {"$eq": ["$post_id", "$$pid_str"]},
+                            {"$eq": [{"$toObjectId": {"$ifNull": ["$post_id", ""]}}, "$$pid"]}
+                        ]
+                    }
+                }}
+            ],
+            "as": "comments_list",
+        }},
+        {"$addFields": {
+            "nb_commentaires": {"$size": "$comments_list"},
+            "score_engagement": {"$add": [{"$ifNull": ["$like", 0]}, {"$size": "$comments_list"}]}
+        }},
+        {"$addFields": {
+            "creator_oid": {
+                "$cond": {
+                    "if": {"$eq": [{"$type": "$creator_id"}, "string"]},
+                    "then": {"$toObjectId": "$creator_id"},
+                    "else": "$creator_id"
+                }
+            }
+        }},
+        {"$lookup": {
+            "from": "users",
+            "localField": "creator_oid",
+            "foreignField": "_id",
+            "as": "creator_info",
+        }},
+        {"$unwind": {"path": "$creator_info", "preserveNullAndEmptyArrays": True}},
+        {"$project": {
+            "contenu": {"$ifNull": ["$biography", ""]},
+            "nb_commentaires": 1,
+            "likes": {"$ifNull": ["$like", 0]},
+            "score_engagement": 1,
+            "pseudo_auteur": {"$ifNull": ["$creator_info.pseudo", "Inconnu"]},
+            "date": 1,
+        }},
+        {"$sort": {"score_engagement": -1}},
+        {"$limit": 10},
+    ]
+    return list(posts_col.aggregate(pipeline))
+
+
 def get_comments_per_post(posts_col):
     pipeline = [
         {"$addFields": {

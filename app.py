@@ -8,6 +8,7 @@ from gestion import (
     agg_posts_par_utilisateur,
     agg_moyenne_likes,
     get_comments_per_post,
+    get_top_engagement,
     render_post_creation,
     render_feed,
     render_user_creation,
@@ -58,23 +59,21 @@ def render_accueil(users_col, posts_col, comments_col):
 
     with col_right:
         st.subheader("Top 10 de l'engagement")
-        all_posts = get_comments_per_post(posts_col)
-        top10 = all_posts[:10]
+        top_engagement = get_top_engagement(posts_col)
         
-        if top10:
-            for i, entry in enumerate(top10, start=1):
+        if top_engagement:
+            for i, entry in enumerate(top_engagement, start=1):
                 auteur = entry.get("pseudo_auteur", "Inconnu")
                 nb_com = entry.get("nb_commentaires", 0)
                 likes = entry.get("likes", 0)
-                st.write(f"{i}. {auteur} - {nb_com} commentaire{'s' if nb_com > 1 else ''}, {likes} like{'s' if likes > 1 else ''}")
+                score = entry.get("score_engagement", 0)
+                st.write(f"{i}. {auteur} - {nb_com} commentaire{'s' if nb_com > 1 else ''}, {likes} like{'s' if likes > 1 else ''} (Score: {score})")
         else:
             st.info("Aucune publication pour le moment.")
 
     st.divider()
 
-
-    # Top 3 des publications les plus commentees
-    
+    ## Top 3 des publications les plus commentees
     st.subheader("Top 3 des publications les plus commentees")
     top3 = get_comments_per_post(posts_col)[:3]
     
