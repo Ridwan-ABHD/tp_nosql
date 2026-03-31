@@ -24,7 +24,7 @@ def ensure_indexes(users_col, posts_col, comments_col):
     # Index pour l'unicité des pseudos 
     users_col.create_index("pseudo", unique=True)
     
-    # Index pour booster le Dashboard 
+    # Index COMMENTS AUX POSTS
     comments_col.create_index("post_id")
     
 
@@ -180,7 +180,7 @@ def toggle_follow_user(users_col, follower_id, target_id):
 def create_post(users_col, posts_col, creator_id, pseudo, biography, post_type, media_data, media_name):
     doc = {
         "creator_id": ObjectId(creator_id),
-        "pseudo": pseudo,  # <--- C'EST ICI LA DÉNORMALISATION
+        "pseudo": pseudo,  
         "biography": biography.strip(),
         "type": post_type,
         "media": media_data,
@@ -190,7 +190,7 @@ def create_post(users_col, posts_col, creator_id, pseudo, biography, post_type, 
         "date": datetime.now(),
     }
     result = posts_col.insert_one(doc)
-    # Mise à jour du compteur (autre forme de dénormalisation)
+    
     users_col.update_one({"_id": ObjectId(creator_id)}, {"$inc": {"numberOfPosts": 1}})
     return result
 
