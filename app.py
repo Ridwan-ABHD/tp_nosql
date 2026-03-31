@@ -15,16 +15,13 @@ from gestion import (
 )
 from pymongo.errors import PyMongoError
 
-# Utiliser la commande : "streamlit run app.py" pour lancer l'application
-
 
 def render_accueil(users_col, posts_col, comments_col):
     """Page Accueil : affiche les statistiques de la plateforme."""
     st.title("Accueil - SocialDB")
 
-    # ─────────────────────────────────────────────────────────────
     # Indicateurs globaux avec st.metric
-    # ─────────────────────────────────────────────────────────────
+    
     stats = agg_moyenne_likes(posts_col)
     nb_users = users_col.count_documents({})
     nb_posts = stats.get("total_posts", 0)
@@ -43,9 +40,9 @@ def render_accueil(users_col, posts_col, comments_col):
 
     st.divider()
 
-    # ─────────────────────────────────────────────────────────────
+
     # Deux colonnes : Top 5 contributeurs | Top 10 engagement
-    # ─────────────────────────────────────────────────────────────
+    
     col_left, col_right = st.columns(2)
 
     with col_left:
@@ -75,9 +72,9 @@ def render_accueil(users_col, posts_col, comments_col):
 
     st.divider()
 
-    # ─────────────────────────────────────────────────────────────
+
     # Top 3 des publications les plus commentees
-    # ─────────────────────────────────────────────────────────────
+    
     st.subheader("Top 3 des publications les plus commentees")
     top3 = get_comments_per_post(posts_col)[:3]
     
@@ -107,9 +104,9 @@ def main():
         st.error(str(exc))
         st.stop()
 
-    # ─────────────────────────────────────────────────────────────
+
     # Navigation dans la sidebar (st.sidebar.radio)
-    # ─────────────────────────────────────────────────────────────
+
     st.sidebar.title("Navigation")
 
     # Selecteur d'utilisateur actif pour interagir
@@ -130,9 +127,8 @@ def main():
         index=0,
     )
 
-    # ─────────────────────────────────────────────────────────────
     # Affichage de la page selectionnee
-    # ─────────────────────────────────────────────────────────────
+ 
     if page == "Accueil":
         render_accueil(users_col, posts_col, comments_col)
     elif page == "Utilisateurs":

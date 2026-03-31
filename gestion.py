@@ -219,7 +219,7 @@ def toggle_post_reaction(posts_col, post_id, user_key, reaction):
     return active
 
 
-## Operations CRUD - Commentaires
+## Operations CRUD
 def create_comment(comments_col, user_id, post_id, text):
     doc = {
         "user_id": ObjectId(user_id),
