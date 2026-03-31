@@ -19,8 +19,13 @@ def get_collections():
     return db["users"], db["posts"], db["comments"]
 
 
-def ensure_indexes(users_col):
+def ensure_indexes(users_col, posts_col, comments_col):
+    # Index pour l'unicité des pseudos 
     users_col.create_index("pseudo", unique=True)
+    
+    # Index pour booster le Dashboard 
+    comments_col.create_index("post_id")
+    
 
 
 ## Chargement des donnees
@@ -30,16 +35,6 @@ def load_users(users_col):
 
 def load_posts(posts_col):
     return list(posts_col.find().sort("date", -1))
-
-
-def load_posts_paginated(posts_col, skip=0, limit=5):
-    """Charge les posts de facon paginee."""
-    return list(posts_col.find().sort("date", -1).skip(skip).limit(limit))
-
-
-def count_total_posts(posts_col):
-    """Compte le nombre total de posts."""
-    return posts_col.count_documents({})
 
 
 def load_comments_for_post(comments_col, post_id):
@@ -615,37 +610,7 @@ def render_feed(users_col, posts_col, comments_col):
         unsafe_allow_html=True,
     )
 
-    # Initialiser les variables de pagination
-    if "feed_posts_page" not in st.session_state:
-        st.session_state["feed_posts_page"] = 0
-    if "feed_posts_cache" not in st.session_state:
-        st.session_state["feed_posts_cache"] = []
-    if "last_total_posts" not in st.session_state:
-        st.session_state["last_total_posts"] = 0
-    if "feed_posts_last_page_loaded" not in st.session_state:
-        st.session_state["feed_posts_last_page_loaded"] = -1
-    
-    # Paramètres de pagination
-    posts_per_page = 5
-    total_posts = count_total_posts(posts_col)
-    
-    # Réinitialiser le cache si des posts ont été ajoutés ou supprimés en dehors de la pagination
-    if total_posts != st.session_state["last_total_posts"]:
-        st.session_state["feed_posts_cache"] = []
-        st.session_state["feed_posts_page"] = 0
-        st.session_state["feed_posts_last_page_loaded"] = -1
-    
-    st.session_state["last_total_posts"] = total_posts
-    
-    # Charger les nouveaux posts seulement si on change de page
-    if st.session_state["feed_posts_page"] != st.session_state["feed_posts_last_page_loaded"]:
-        skip = st.session_state["feed_posts_page"] * posts_per_page
-        new_posts = load_posts_paginated(posts_col, skip=skip, limit=posts_per_page)
-        if new_posts:
-            st.session_state["feed_posts_cache"].extend(new_posts)
-        st.session_state["feed_posts_last_page_loaded"] = st.session_state["feed_posts_page"]
-    
-    posts = st.session_state["feed_posts_cache"]
+    posts = load_posts(posts_col)
     users = {str(u["_id"]): u for u in load_users(users_col)}
 
     if not posts:
@@ -807,26 +772,7 @@ def render_feed(users_col, posts_col, comments_col):
                     if st.button("🗑", key=f"delete_post_btn_{post_id}"):
                         try:
                             delete_post(users_col, posts_col, comments_col, str(post_id))
-                            # Réinitialiser le cache et la pagination après suppression
-                            st.session_state["feed_posts_cache"] = []
-                            st.session_state["feed_posts_page"] = 0
                             st.success("Post supprime.")
                             st.rerun()
                         except PyMongoError as exc:
                             st.error(f"Erreur MongoDB: {exc}")
-
-    # Bouton pour charger plus de posts
-    st.divider()
-    col_load, _ = st.columns([1, 4])
-    with col_load:
-        posts_loaded = len(st.session_state["feed_posts_cache"])
-        has_more_posts = posts_loaded < total_posts
-        
-        if has_more_posts:
-            if st.button("📥 Charger plus de posts", key="load_more_posts"):
-                st.session_state["feed_posts_page"] += 1
-        else:
-            if st.session_state["feed_posts_page"] > 0:
-                st.caption("Tous les posts ont été affichés.")
-
-

@@ -97,7 +97,7 @@ def main():
         db = get_db()
         db.command("ping")
         users_col, posts_col, comments_col = get_collections()
-        ensure_indexes(users_col)
+        ensure_indexes(users_col, posts_col, comments_col)
     except PyMongoError as exc:
         st.error("Connexion MongoDB impossible. Verifie que MongoDB est demarre sur localhost:27017.")
         st.error(str(exc))
