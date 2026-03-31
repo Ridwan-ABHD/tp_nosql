@@ -9,7 +9,7 @@ Avant de lancer l'application, assurez-vous d'avoir :
 - **Python 3.8+** installé
 - **MongoDB** installé et en cours d'exécution localement (sur le port 27017)
 
-## 🔧 Installation
+## Installation
 
 ### 1. Installer les dépendances
 
@@ -34,7 +34,7 @@ mongod
 
 Ou vérifiez que le service MongoDB est actif.
 
-## 🚀 Lancer l'application
+##  Lancer l'application
 
 Dans le dossier `tp_nosql/`, exécutez :
 
@@ -60,7 +60,7 @@ tp_nosql/
 └── README.md        # Ce fichier
 ```
 
-## 📦 Dépendances utilisées
+## Dépendances utilisées
 
 | Package    | Utilité |
 |-----------|---------|
@@ -68,7 +68,7 @@ tp_nosql/
 | **pymongo** | Connexion à MongoDB |
 | **bson** | Gestion des ObjectId MongoDB (inclus dans pymongo) |
 
-## ⚙️ Configuration
+## Configuration
 
 L'application se connecte à MongoDB sur :
 ```
@@ -82,7 +82,7 @@ Collections :
 - `posts` : Publications
 - `comments` : Commentaires
 
-## 🖥️ Utilisation
+## Utilisation
 
 Une fois l'application lancée, utilisez la barre latérale pour naviguer :
 
@@ -92,7 +92,7 @@ Une fois l'application lancée, utilisez la barre latérale pour naviguer :
 4. **Fil** : Afficher le fil d'actualités avec chargement progressif
 5. **Profil** : Consulter les profils utilisateurs
 
-## 🐛 Dépannage
+## Dépannage
 
 **Erreur : "Connexion MongoDB impossible"**
 - Assurez-vous que MongoDB est démarré
@@ -104,7 +104,7 @@ Une fois l'application lancée, utilisez la barre latérale pour naviguer :
 **L'application ne s'ouvre pas dans le navigateur**
 - Accédez manuellement à `http://localhost:8501`
 
-## 📝 Notes
+## Notes
 
 - Les images uploadées sont converties en base64 et stockées dans MongoDB
 - Le fil d'actualités charge 5 posts à la fois pour optimiser les performances
