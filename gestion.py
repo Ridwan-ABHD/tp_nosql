@@ -177,9 +177,10 @@ def toggle_follow_user(users_col, follower_id, target_id):
 
 #        #00FF00
 ## Operations CRUD - Posts
-def create_post(users_col, posts_col, creator_id, biography, post_type, media_data, media_name):
+def create_post(users_col, posts_col, creator_id, pseudo, biography, post_type, media_data, media_name):
     doc = {
         "creator_id": ObjectId(creator_id),
+        "pseudo": pseudo,  # <--- C'EST ICI LA DÉNORMALISATION
         "biography": biography.strip(),
         "type": post_type,
         "media": media_data,
@@ -189,6 +190,7 @@ def create_post(users_col, posts_col, creator_id, biography, post_type, media_da
         "date": datetime.now(),
     }
     result = posts_col.insert_one(doc)
+    # Mise à jour du compteur (autre forme de dénormalisation)
     users_col.update_one({"_id": ObjectId(creator_id)}, {"$inc": {"numberOfPosts": 1}})
     return result
 
