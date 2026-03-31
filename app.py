@@ -88,7 +88,7 @@ def render_accueil(users_col, posts_col, comments_col):
     else:
         st.info("Aucune publication pour le moment.")
 
-
+#        #00FF00
 def main():
     st.set_page_config(page_title="SocialDB", page_icon="S", layout="wide")
 

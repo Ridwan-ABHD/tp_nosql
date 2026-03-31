@@ -19,6 +19,7 @@ def get_collections():
     return db["users"], db["posts"], db["comments"]
 
 
+#        #00FF00
 def ensure_indexes(users_col, posts_col, comments_col):
     # Index pour l'unicité des pseudos 
     users_col.create_index("pseudo", unique=True)
@@ -136,7 +137,7 @@ def render_post_media(post):
         else:
             st.video(media_value)
 
-
+#        #00FF00
 ## Operations CRUD - Utilisateurs
 def create_user(users_col, pseudo, avatar, gender, birthday, language, biography, password):
     birthday_dt = datetime.combine(birthday, datetime.min.time())
@@ -174,7 +175,7 @@ def toggle_follow_user(users_col, follower_id, target_id):
     users_col.update_one({"_id": target_obj_id}, {"$addToSet": {"followers": follower_id}})
     return True
 
-
+#        #00FF00
 ## Operations CRUD - Posts
 def create_post(users_col, posts_col, creator_id, biography, post_type, media_data, media_name):
     doc = {
@@ -191,7 +192,7 @@ def create_post(users_col, posts_col, creator_id, biography, post_type, media_da
     users_col.update_one({"_id": ObjectId(creator_id)}, {"$inc": {"numberOfPosts": 1}})
     return result
 
-
+#        #00FF00
 def delete_post(users_col, posts_col, comments_col, post_id):
     post = posts_col.find_one({"_id": ObjectId(post_id)}, {"creator_id": 1})
     if not post:
@@ -223,7 +224,7 @@ def toggle_post_reaction(posts_col, post_id, user_key, reaction):
     )
     return active
 
-
+#        #00FF00
 ## Operations CRUD
 def create_comment(comments_col, user_id, post_id, text):
     doc = {
@@ -286,7 +287,7 @@ def agg_posts_par_utilisateur(users_col, posts_col):
     ]
     return list(posts_col.aggregate(pipeline))
 
-
+#        #00FF00
 def agg_moyenne_likes(posts_col):
     pipeline = [
         {"$group": {
@@ -490,7 +491,7 @@ def render_profile(users_col, posts_col):
         stat_col_1, stat_col_2 = st.columns(2)
         with stat_col_1:
             st.metric("Posts", int(user.get("numberOfPosts", len(user_posts))))
-            st.metric("Abonnes", relation_count(user.get("followers", [])))
+            st.metric("Abonnés", relation_count(user.get("followers", [])))
         with stat_col_2:
             st.metric("Likes totaux", total_likes)
             st.metric("Abonnements", relation_count(user.get("following", [])))
