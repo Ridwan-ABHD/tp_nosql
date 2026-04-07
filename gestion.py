@@ -27,6 +27,9 @@ def ensure_indexes(users_col, posts_col, comments_col):
     # Index COMMENTS AUX POSTS
     comments_col.create_index("post_id")
     
+    # Index pour le tri par date
+    posts_col.create_index([('date', -1)])
+    comments_col.create_index([('date', -1)])
 
 
 ## Chargement des donnees
